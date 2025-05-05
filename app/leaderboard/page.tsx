@@ -193,7 +193,7 @@ export default function LeaderboardPage() {
 
             <div className="mt-8 flex justify-center">
               <Tabs defaultValue="all-time" className="w-full max-w-md" onValueChange={setTimeframe}>
-                <TabsList className="grid grid-cols-3 w-full">
+                <TabsList className="grid-cols-3 w-full">
                   <TabsTrigger value="all-time">Бүх цаг</TabsTrigger>
                   <TabsTrigger value="monthly">Сарын</TabsTrigger>
                   <TabsTrigger value="weekly">Долоо хоногийн</TabsTrigger>
