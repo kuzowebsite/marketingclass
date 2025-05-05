@@ -29,6 +29,18 @@ import {
 } from "lucide-react"
 
 export default function IndividualPage() {
+  // Add a check at the beginning of the component to ensure authentication is properly handled
+  // Add this near the top of the component:
+
+  useEffect(() => {
+    // Check if we're in development mode with dev admin access
+    const devModeAdminAccess = localStorage.getItem("devModeAdminAccess")
+    if (process.env.NODE_ENV === "development" && devModeAdminAccess === "true") {
+      console.log("Dev mode admin access detected in individual page")
+      // No need to redirect, just log for debugging
+    }
+  }, [])
+
   const [courses, setCourses] = useState<Course[]>([])
   const [filteredCourses, setFilteredCourses] = useState<Course[]>([])
   const [loading, setLoading] = useState(true)
