@@ -25,8 +25,10 @@ import {
   Linkedin,
   Youtube,
   Globe,
+  UserIcon,
 } from "lucide-react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import WishlistCourses from "@/components/wishlist-courses"
 import PaymentHistory from "@/components/payment-history"
 import type { Course } from "@/lib/types"
@@ -37,6 +39,12 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true)
   const [purchasedCourses, setPurchasedCourses] = useState<Course[]>([])
   const [coursesLoading, setCoursesLoading] = useState(false)
+  const [isClient, setIsClient] = useState(false)
+  const router = useRouter()
+
+  useEffect(() => {
+    setIsClient(true)
+  }, [])
 
   useEffect(() => {
     const fetchUserData = async () => {
@@ -109,6 +117,26 @@ export default function ProfilePage() {
     return facebook || twitter || instagram || linkedin || youtube || website
   }
 
+  const handleSignOut = async () => {
+    try {
+      await signOut()
+      router.push("/auth/login")
+    } catch (error) {
+      console.error("Error signing out:", error)
+    }
+  }
+
+  // If not client-side yet, show loading state
+  if (!isClient) {
+    return (
+      <div className="container mx-auto py-8 px-4">
+        <div className="flex justify-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+        </div>
+      </div>
+    )
+  }
+
   if (loading) {
     return (
       <div className="container mx-auto py-8 px-4">
@@ -146,9 +174,10 @@ export default function ProfilePage() {
   if (!user) {
     return (
       <div className="container mx-auto py-16 px-4 text-center">
+        <UserIcon className="mx-auto h-16 w-16 text-gray-400 mb-4" />
         <h1 className="text-2xl font-bold mb-4">Нэвтрээгүй байна</h1>
         <p className="mb-8">Профайл хуудсыг харахын тулд нэвтэрнэ үү.</p>
-        <Link href="/auth/login">
+        <Link href="/auth/login?callbackUrl=/profile">
           <Button size="lg">Нэвтрэх</Button>
         </Link>
       </div>
@@ -290,7 +319,7 @@ export default function ProfilePage() {
                       Нууц үг солих
                     </Button>
                   </Link>
-                  <Button variant="outline" className="w-full justify-start text-red-500" onClick={signOut}>
+                  <Button variant="outline" className="w-full justify-start text-red-500" onClick={handleSignOut}>
                     <LogOut className="mr-2 h-4 w-4" />
                     Гарах
                   </Button>
