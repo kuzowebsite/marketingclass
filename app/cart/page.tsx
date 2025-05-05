@@ -11,8 +11,9 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import { useToast } from "@/components/ui/use-toast"
-import { Trash2 } from "lucide-react"
+import { Trash2, ShoppingCart } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import Link from "next/link"
 
 export default function CartPage() {
   const { items, removeFromCart, clearCart, totalPrice } = useCart()
@@ -23,6 +24,11 @@ export default function CartPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { toast } = useToast()
+  const [isClient, setIsClient] = useState(false)
+
+  useEffect(() => {
+    setIsClient(true)
+  }, [])
 
   useEffect(() => {
     // Check for referral code in URL
@@ -38,7 +44,7 @@ export default function CartPage() {
         title: "Анхааруулга",
         description: "Худалдан авахын тулд нэвтэрнэ үү",
       })
-      router.push("/auth/login")
+      router.push("/auth/login?callbackUrl=/cart")
       return
     }
 
@@ -156,15 +162,44 @@ export default function CartPage() {
     ],
   }
 
+  // If not client-side yet, show loading state
+  if (!isClient) {
+    return (
+      <div className="container py-12">
+        <h1 className="text-3xl font-bold">Таны сагс</h1>
+        <div className="mt-8 flex justify-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+        </div>
+      </div>
+    )
+  }
+
+  // If no user is logged in, show login prompt
+  if (!user) {
+    return (
+      <div className="container py-12">
+        <h1 className="text-3xl font-bold">Таны сагс</h1>
+        <div className="mt-8 text-center py-12">
+          <ShoppingCart className="mx-auto h-16 w-16 text-gray-400 mb-4" />
+          <h2 className="text-xl font-medium mb-4">Сагсаа харахын тулд нэвтэрнэ үү</h2>
+          <Button asChild>
+            <Link href="/auth/login?callbackUrl=/cart">Нэвтрэх</Link>
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="container py-12">
       <h1 className="text-3xl font-bold">Таны сагс</h1>
 
       {items.length === 0 ? (
         <div className="mt-8 text-center py-12">
+          <ShoppingCart className="mx-auto h-16 w-16 text-gray-400 mb-4" />
           <h2 className="text-xl font-medium">Таны сагс хоосон байна</h2>
           <Button asChild className="mt-4">
-            <a href="/courses">Хичээлүүд үзэх</a>
+            <Link href="/courses">Хичээлүүд үзэх</Link>
           </Button>
         </div>
       ) : (
