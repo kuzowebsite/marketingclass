@@ -1,111 +1,181 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { ref, get, update, remove } from "firebase/database"
 import { useFirebase } from "@/lib/firebase/firebase-provider"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { useToast } from "@/components/ui/use-toast"
-import type { Reminder, Course } from "@/lib/types"
-import { Calendar, CheckCircle, Trash2 } from "lucide-react"
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
+import { Calendar } from "@/components/ui/calendar"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { format } from "date-fns"
+import { CalendarIcon, Plus, Bell, Trash2, X, CalendarPlus2Icon as CalendarIcon2 } from "lucide-react"
+import { cn } from "@/lib/utils"
+import { Badge } from "@/components/ui/badge"
+import { Checkbox } from "@/components/ui/checkbox"
+import { useToast } from "@/components/ui/use-toast"
+import { ref, push, set, get, update, remove } from "firebase/database"
+import Link from "next/link"
+
+interface Reminder {
+  id: string
+  title: string
+  description: string
+  date: string
+  completed: boolean
+}
 
 export default function RemindersPage() {
-  const [reminders, setReminders] = useState<Reminder[]>([])
-  const [courses, setCourses] = useState<Record<string, Course>>({})
-  const [loading, setLoading] = useState(true)
-
-  const { db, user } = useFirebase()
+  const { user, db } = useFirebase()
   const router = useRouter()
   const { toast } = useToast()
+  const [reminders, setReminders] = useState<Reminder[]>([])
+  const [loading, setLoading] = useState(true)
+  const [isAddingReminder, setIsAddingReminder] = useState(false)
+  const [title, setTitle] = useState("")
+  const [description, setDescription] = useState("")
+  const [date, setDate] = useState<Date | undefined>(new Date())
+  const [isClient, setIsClient] = useState(false)
 
   useEffect(() => {
-    const fetchReminders = async () => {
-      if (!db || !user) {
-        router.push("/auth/login")
-        return
-      }
+    setIsClient(true)
+  }, [])
 
-      try {
-        // Fetch reminders
-        const remindersRef = ref(db, `reminders/${user.uid}`)
-        const remindersSnapshot = await get(remindersRef)
-
-        if (remindersSnapshot.exists()) {
-          const reminderData = remindersSnapshot.val() as Record<string, Reminder>
-          setReminders(Object.values(reminderData).sort((a, b) => a.scheduledFor - b.scheduledFor))
-
-          // Fetch course data for each reminder
-          const courseIds = new Set<string>()
-          Object.values(reminderData).forEach((reminder) => {
-            courseIds.add(reminder.courseId)
-          })
-
-          const coursesData: Record<string, Course> = {}
-          for (const courseId of courseIds) {
-            const courseRef = ref(db, `courses/${courseId}`)
-            const courseSnapshot = await get(courseRef)
-
-            if (courseSnapshot.exists()) {
-              coursesData[courseId] = courseSnapshot.val() as Course
-            }
-          }
-
-          setCourses(coursesData)
-        }
-      } catch (error) {
-        console.error("Error fetching reminders:", error)
-        toast({
-          title: "Алдаа",
-          description: "Сануулгууд ачаалахад алдаа гарлаа",
-          variant: "destructive",
-        })
-      } finally {
-        setLoading(false)
-      }
+  useEffect(() => {
+    if (user && db) {
+      fetchReminders()
+    } else {
+      setLoading(false)
     }
+  }, [user, db])
 
-    fetchReminders()
-  }, [db, router, toast, user])
-
-  const markAsCompleted = async (reminderId: string) => {
-    if (!db || !user) return
+  const fetchReminders = async () => {
+    if (!user || !db) return
 
     try {
-      const reminderRef = ref(db, `reminders/${user.uid}/${reminderId}`)
-      await update(reminderRef, { isCompleted: true })
+      setLoading(true)
+      const remindersRef = ref(db, `users/${user.uid}/reminders`)
+      const snapshot = await get(remindersRef)
 
-      setReminders((prev) => prev.filter((r) => r.id !== reminderId))
+      if (snapshot.exists()) {
+        const remindersData = snapshot.val()
+        const remindersList = Object.keys(remindersData).map((key) => ({
+          id: key,
+          ...remindersData[key],
+        }))
+
+        // Sort by date (newest first) and then by completion status
+        remindersList.sort((a, b) => {
+          if (a.completed !== b.completed) {
+            return a.completed ? 1 : -1
+          }
+          return new Date(b.date).getTime() - new Date(a.date).getTime()
+        })
+
+        setReminders(remindersList)
+      } else {
+        setReminders([])
+      }
+    } catch (error) {
+      console.error("Error fetching reminders:", error)
+      toast({
+        title: "Алдаа",
+        description: "Сануулгуудыг ачаалахад алдаа гарлаа",
+        variant: "destructive",
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleAddReminder = async () => {
+    if (!user || !db) {
+      toast({
+        title: "Анхааруулга",
+        description: "Сануулга үүсгэхийн тулд нэвтэрнэ үү",
+      })
+      router.push("/auth/login?callbackUrl=/reminders")
+      return
+    }
+
+    if (!title || !date) {
+      toast({
+        title: "Анхааруулга",
+        description: "Гарчиг болон огноог оруулна уу",
+      })
+      return
+    }
+
+    try {
+      const remindersRef = ref(db, `users/${user.uid}/reminders`)
+      const newReminderRef = push(remindersRef)
+
+      const newReminder = {
+        title,
+        description,
+        date: date?.toISOString(),
+        completed: false,
+      }
+
+      await set(newReminderRef, newReminder)
 
       toast({
         title: "Амжилттай",
-        description: "Сануулга дууссан гэж тэмдэглэгдлээ",
+        description: "Сануулга амжилттай үүсгэгдлээ",
       })
+
+      setTitle("")
+      setDescription("")
+      setDate(new Date())
+      setIsAddingReminder(false)
+      fetchReminders()
     } catch (error) {
-      console.error("Error updating reminder:", error)
+      console.error("Error adding reminder:", error)
       toast({
         title: "Алдаа",
-        description: "Сануулга шинэчлэхэд алдаа гарлаа",
+        description: "Сануулга үүсгэхэд алдаа гарлаа",
         variant: "destructive",
       })
     }
   }
 
-  const deleteReminder = async (reminderId: string) => {
-    if (!db || !user) return
+  const handleToggleComplete = async (id: string, currentStatus: boolean) => {
+    if (!user || !db) return
 
     try {
-      const reminderRef = ref(db, `reminders/${user.uid}/${reminderId}`)
-      await remove(reminderRef)
-
-      setReminders((prev) => prev.filter((r) => r.id !== reminderId))
+      const reminderRef = ref(db, `users/${user.uid}/reminders/${id}`)
+      await update(reminderRef, { completed: !currentStatus })
 
       toast({
         title: "Амжилттай",
-        description: "Сануулга устгагдлаа",
+        description: !currentStatus ? "Сануулга дууссан гэж тэмдэглэгдлээ" : "Сануулга идэвхтэй болголоо",
       })
+
+      fetchReminders()
+    } catch (error) {
+      console.error("Error updating reminder:", error)
+      toast({
+        title: "Алдаа",
+        description: "Сануулгын төлөвийг өөрчлөхөд алдаа гарлаа",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleDeleteReminder = async (id: string) => {
+    if (!user || !db) return
+
+    try {
+      const reminderRef = ref(db, `users/${user.uid}/reminders/${id}`)
+      await remove(reminderRef)
+
+      toast({
+        title: "Амжилттай",
+        description: "Сануулга амжилттай устгагдлаа",
+      })
+
+      fetchReminders()
     } catch (error) {
       console.error("Error deleting reminder:", error)
       toast({
@@ -116,132 +186,176 @@ export default function RemindersPage() {
     }
   }
 
-  if (loading) {
+  // If not client-side yet, show loading state
+  if (!isClient) {
     return (
-      <div className="container py-12 flex items-center justify-center min-h-[60vh]">
-        <div className="text-center">
-          <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full mx-auto"></div>
-          <p className="mt-4">Ачааллаж байна...</p>
+      <div className="container py-12">
+        <div className="flex justify-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
         </div>
       </div>
     )
   }
 
-  const upcomingReminders = reminders.filter((r) => r.scheduledFor > Date.now() && !r.isCompleted)
-  const pastReminders = reminders.filter((r) => r.scheduledFor <= Date.now() && !r.isCompleted)
+  // If no user is logged in, show login prompt
+  if (!user) {
+    return (
+      <div className="container py-12">
+        <h1 className="text-3xl font-bold mb-8">Сануулгууд</h1>
+        <div className="text-center py-12">
+          <Bell className="mx-auto h-16 w-16 text-gray-400 mb-4" />
+          <h2 className="text-xl font-medium mb-4">Сануулгуудаа харахын тулд нэвтэрнэ үү</h2>
+          <Button asChild>
+            <Link href="/auth/login?callbackUrl=/reminders">Нэвтрэх</Link>
+          </Button>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="container py-12">
-      <h1 className="text-3xl font-bold">Хичээлийн сануулгууд</h1>
-      <p className="text-muted-foreground mt-2">Хичээлээ дуусгах зорилго тавьж, сануулга үүсгээрэй</p>
-
-      <Tabs defaultValue="upcoming" className="mt-8">
-        <TabsList>
-          <TabsTrigger value="upcoming">Удахгүй ирэх ({upcomingReminders.length})</TabsTrigger>
-          <TabsTrigger value="past">Хугацаа хэтэрсэн ({pastReminders.length})</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="upcoming" className="mt-6">
-          {upcomingReminders.length === 0 ? (
-            <div className="text-center py-12 border rounded-md">
-              <Calendar className="h-12 w-12 mx-auto text-muted-foreground" />
-              <p className="mt-4 text-muted-foreground">Удахгүй ирэх сануулга байхгүй байна</p>
-              <Button asChild className="mt-4">
-                <a href="/courses">Хичээл үзэх</a>
-              </Button>
-            </div>
+      <div className="flex justify-between items-center mb-8">
+        <h1 className="text-3xl font-bold">Сануулгууд</h1>
+        <Button onClick={() => setIsAddingReminder(!isAddingReminder)}>
+          {isAddingReminder ? (
+            <>
+              <X className="mr-2 h-4 w-4" />
+              Цуцлах
+            </>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {upcomingReminders.map((reminder) => (
-                <Card key={reminder.id}>
-                  <CardHeader className="pb-2">
-                    <div className="flex justify-between">
-                      <CardTitle className="text-lg">{reminder.title}</CardTitle>
-                      <div className="flex gap-2">
-                        <Button variant="ghost" size="icon" onClick={() => markAsCompleted(reminder.id)}>
-                          <CheckCircle className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" onClick={() => deleteReminder(reminder.id)}>
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                    <CardDescription>
-                      {courses[reminder.courseId]?.title || "Хичээл"}
-                      {reminder.lessonId &&
-                        courses[reminder.courseId]?.lessons.find((l) => l.id === reminder.lessonId) &&
-                        ` / ${courses[reminder.courseId].lessons.find((l) => l.id === reminder.lessonId)!.title}`}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    {reminder.description && (
-                      <p className="text-sm text-muted-foreground mb-2">{reminder.description}</p>
-                    )}
-                    <div className="flex items-center gap-2 text-sm">
-                      <Calendar className="h-4 w-4 text-muted-foreground" />
-                      <span>{format(new Date(reminder.scheduledFor), "PPP")}</span>
-                    </div>
-                    {reminder.lessonId && (
-                      <Button asChild variant="outline" size="sm" className="mt-4 w-full">
-                        <a href={`/courses/${reminder.courseId}/lessons/${reminder.lessonId}`}>Хичээл үзэх</a>
-                      </Button>
-                    )}
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
+            <>
+              <Plus className="mr-2 h-4 w-4" />
+              Шинэ сануулга
+            </>
           )}
-        </TabsContent>
+        </Button>
+      </div>
 
-        <TabsContent value="past" className="mt-6">
-          {pastReminders.length === 0 ? (
-            <div className="text-center py-12 border rounded-md">
-              <Calendar className="h-12 w-12 mx-auto text-muted-foreground" />
-              <p className="mt-4 text-muted-foreground">Хугацаа хэтэрсэн сануулга байхгүй байна</p>
+      {isAddingReminder && (
+        <Card className="mb-8">
+          <CardHeader>
+            <CardTitle>Шинэ сануулга үүсгэх</CardTitle>
+            <CardDescription>Хичээл эсвэл ажлаа санахад тусална</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <label htmlFor="title" className="text-sm font-medium">
+                Гарчиг
+              </label>
+              <Input
+                id="title"
+                placeholder="Сануулгын гарчиг"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+              />
             </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {pastReminders.map((reminder) => (
-                <Card key={reminder.id} className="border-red-200 dark:border-red-800">
-                  <CardHeader className="pb-2">
-                    <div className="flex justify-between">
-                      <CardTitle className="text-lg">{reminder.title}</CardTitle>
-                      <div className="flex gap-2">
-                        <Button variant="ghost" size="icon" onClick={() => markAsCompleted(reminder.id)}>
-                          <CheckCircle className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" onClick={() => deleteReminder(reminder.id)}>
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                    <CardDescription>
-                      {courses[reminder.courseId]?.title || "Хичээл"}
-                      {reminder.lessonId &&
-                        courses[reminder.courseId]?.lessons.find((l) => l.id === reminder.lessonId) &&
-                        ` / ${courses[reminder.courseId].lessons.find((l) => l.id === reminder.lessonId)!.title}`}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    {reminder.description && (
-                      <p className="text-sm text-muted-foreground mb-2">{reminder.description}</p>
-                    )}
-                    <div className="flex items-center gap-2 text-sm text-red-500">
-                      <Calendar className="h-4 w-4" />
-                      <span>{format(new Date(reminder.scheduledFor), "PPP")} (Хугацаа хэтэрсэн)</span>
-                    </div>
-                    {reminder.lessonId && (
-                      <Button asChild variant="outline" size="sm" className="mt-4 w-full">
-                        <a href={`/courses/${reminder.courseId}/lessons/${reminder.lessonId}`}>Хичээл үзэх</a>
-                      </Button>
-                    )}
-                  </CardContent>
-                </Card>
-              ))}
+            <div className="space-y-2">
+              <label htmlFor="description" className="text-sm font-medium">
+                Тайлбар
+              </label>
+              <Textarea
+                id="description"
+                placeholder="Сануулгын тайлбар"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+              />
             </div>
-          )}
-        </TabsContent>
-      </Tabs>
+            <div className="space-y-2">
+              <label htmlFor="date" className="text-sm font-medium">
+                Огноо
+              </label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant={"outline"}
+                    className={cn("w-full justify-start text-left font-normal", !date && "text-muted-foreground")}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {date ? format(date, "PPP") : <span>Огноо сонгох</span>}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0">
+                  <Calendar mode="single" selected={date} onSelect={setDate} initialFocus />
+                </PopoverContent>
+              </Popover>
+            </div>
+          </CardContent>
+          <CardFooter>
+            <Button onClick={handleAddReminder}>
+              <Plus className="mr-2 h-4 w-4" />
+              Сануулга үүсгэх
+            </Button>
+          </CardFooter>
+        </Card>
+      )}
+
+      {loading ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {[1, 2, 3].map((i) => (
+            <Card key={i} className="animate-pulse">
+              <CardHeader>
+                <div className="h-6 bg-gray-200 dark:bg-gray-700 rounded w-3/4 mb-2"></div>
+                <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/2"></div>
+              </CardHeader>
+              <CardContent>
+                <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-full mb-2"></div>
+                <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4"></div>
+              </CardContent>
+              <CardFooter>
+                <div className="h-10 bg-gray-200 dark:bg-gray-700 rounded w-full"></div>
+              </CardFooter>
+            </Card>
+          ))}
+        </div>
+      ) : reminders.length === 0 ? (
+        <div className="text-center py-12">
+          <Bell className="mx-auto h-16 w-16 text-gray-400 mb-4" />
+          <h2 className="text-xl font-medium mb-2">Сануулга байхгүй байна</h2>
+          <p className="text-gray-500 mb-6">Шинэ сануулга үүсгэж хичээл эсвэл ажлаа санахад тусална</p>
+          <Button onClick={() => setIsAddingReminder(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            Шинэ сануулга үүсгэх
+          </Button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {reminders.map((reminder) => (
+            <Card key={reminder.id} className={reminder.completed ? "opacity-70" : ""}>
+              <CardHeader className="pb-2">
+                <div className="flex justify-between items-start">
+                  <CardTitle className="text-lg">{reminder.title}</CardTitle>
+                  <Badge variant={reminder.completed ? "outline" : "default"}>
+                    {reminder.completed ? "Дууссан" : "Идэвхтэй"}
+                  </Badge>
+                </div>
+                <CardDescription className="flex items-center mt-1">
+                  <CalendarIcon2 className="h-3 w-3 mr-1" />
+                  {format(new Date(reminder.date), "PPP")}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-gray-600 dark:text-gray-300">{reminder.description}</p>
+              </CardContent>
+              <CardFooter className="flex justify-between">
+                <div className="flex items-center">
+                  <Checkbox
+                    id={`complete-${reminder.id}`}
+                    checked={reminder.completed}
+                    onCheckedChange={() => handleToggleComplete(reminder.id, reminder.completed)}
+                  />
+                  <label htmlFor={`complete-${reminder.id}`} className="ml-2 text-sm">
+                    {reminder.completed ? "Дууссан" : "Дуусгах"}
+                  </label>
+                </div>
+                <Button variant="ghost" size="icon" onClick={() => handleDeleteReminder(reminder.id)}>
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </CardFooter>
+            </Card>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
