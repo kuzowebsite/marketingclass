@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useFirebase } from "@/lib/firebase/firebase-provider"
@@ -23,29 +23,46 @@ export function MobileMenu() {
   const [isAdmin, setIsAdmin] = useState(false)
   const [notifications] = useState(3) // Example notification count
   const { isMobile } = useMobile()
+  const [isClient, setIsClient] = useState(false)
+
+  useEffect(() => {
+    setIsClient(true)
+  }, [])
+
+  useEffect(() => {
+    const checkAdminStatus = async () => {
+      if (user && db) {
+        try {
+          const userRef = ref(db, `users/${user.uid}`)
+          const snapshot = await get(userRef)
+
+          if (snapshot.exists()) {
+            const userData = snapshot.val()
+            setIsAdmin(userData.isAdmin || false)
+          }
+        } catch (error) {
+          console.error("Error checking admin status:", error)
+        }
+      } else {
+        setIsAdmin(false)
+      }
+    }
+
+    checkAdminStatus()
+  }, [user, db])
 
   // Only show on mobile
   if (!isMobile) {
     return null
   }
 
-  // Check if user is admin
-  if (user && db) {
-    const checkAdminStatus = async () => {
-      try {
-        const userRef = ref(db, `users/${user.uid}`)
-        const snapshot = await get(userRef)
-
-        if (snapshot.exists()) {
-          const userData = snapshot.val()
-          setIsAdmin(userData.isAdmin || false)
-        }
-      } catch (error) {
-        console.error("Error checking admin status:", error)
-      }
-    }
-
-    checkAdminStatus()
+  // If not client-side yet, return null or a loading indicator
+  if (!isClient) {
+    return (
+      <Button variant="ghost" size="icon" className="md:hidden">
+        <div className="h-6 w-6 rounded-full border-2 border-gray-300 border-t-transparent animate-spin"></div>
+      </Button>
+    )
   }
 
   const handleSignOut = async () => {
@@ -94,7 +111,7 @@ export function MobileMenu() {
           </SheetHeader>
 
           {/* User info if logged in */}
-          {user && (
+          {isClient && user && (
             <div className="p-4 border-b">
               <div className="flex items-center space-x-3">
                 <Avatar className="h-12 w-12">
@@ -169,32 +186,36 @@ export function MobileMenu() {
 
           {/* Footer actions */}
           <div className="p-4 border-t">
-            {user ? (
-              <Button variant="destructive" className="w-full" onClick={handleSignOut}>
-                Гарах
-              </Button>
-            ) : (
-              <div className="flex flex-col space-y-2">
-                <Button
-                  variant="outline"
-                  className="w-full"
-                  onClick={() => {
-                    router.push("/auth/login")
-                    setIsOpen(false)
-                  }}
-                >
-                  {settings.buttons?.login || "Нэвтрэх"}
-                </Button>
-                <Button
-                  className="w-full"
-                  onClick={() => {
-                    router.push("/auth/register")
-                    setIsOpen(false)
-                  }}
-                >
-                  {settings.buttons?.signUp || "Бүртгүүлэх"}
-                </Button>
-              </div>
+            {isClient && (
+              <>
+                {user ? (
+                  <Button variant="destructive" className="w-full" onClick={handleSignOut}>
+                    Гарах
+                  </Button>
+                ) : (
+                  <div className="flex flex-col space-y-2">
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => {
+                        router.push("/auth/login")
+                        setIsOpen(false)
+                      }}
+                    >
+                      {settings.buttons?.login || "Нэвтрэх"}
+                    </Button>
+                    <Button
+                      className="w-full"
+                      onClick={() => {
+                        router.push("/auth/register")
+                        setIsOpen(false)
+                      }}
+                    >
+                      {settings.buttons?.signUp || "Бүртгүүлэх"}
+                    </Button>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>
