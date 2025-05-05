@@ -13,6 +13,9 @@ export function middleware(request: NextRequest) {
     path === "/auth/forgot-password" ||
     path === "/" ||
     path.startsWith("/blog") ||
+    path.startsWith("/leaderboard") ||
+    path.startsWith("/organization") ||
+    path.startsWith("/individual") ||
     (path.startsWith("/courses") && !path.includes("/lessons")) ||
     path.startsWith("/_next") ||
     path.startsWith("/api") ||
@@ -27,7 +30,7 @@ export function middleware(request: NextRequest) {
   const isAdminToken = request.cookies.get("isAdmin")?.value === "true"
 
   // In development mode, allow access to admin pages without authentication
-  if (isDev && (path === "/auth/admin-login" || path.startsWith("/admin"))) {
+  if (process.env.NODE_ENV === "development" && (path === "/auth/admin-login" || path.startsWith("/admin"))) {
     console.log("Development mode: bypassing admin authentication")
     return NextResponse.next()
   }
