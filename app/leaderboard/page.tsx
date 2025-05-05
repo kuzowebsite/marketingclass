@@ -33,6 +33,15 @@ export default function LeaderboardPage() {
   const { db } = useFirebase()
 
   useEffect(() => {
+    // Check if we're in development mode with dev admin access
+    const devModeAdminAccess = localStorage.getItem("devModeAdminAccess")
+    if (process.env.NODE_ENV === "development" && devModeAdminAccess === "true") {
+      console.log("Dev mode admin access detected in leaderboard page")
+      // No need to redirect, just log for debugging
+    }
+  }, [])
+
+  useEffect(() => {
     const fetchLeaderboard = async () => {
       if (!db) return
 
