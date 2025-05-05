@@ -15,6 +15,9 @@ import {
 import { ref, onValue, off, get, update } from "firebase/database"
 import { auth, db, storage } from "./firebase-config"
 
+// Firebase provider-д хэрэглэгчийн админ эрхийг шалгах функцийг нэмэх
+
+// FirebaseContextType интерфейсэд isAdmin шинж чанарыг нэмэх
 type FirebaseContextType = {
   user: User | null
   loading: boolean
@@ -29,8 +32,11 @@ type FirebaseContextType = {
   isInitialized: boolean
   connectionStatus: "connected" | "disconnected" | "connecting"
   retryConnection: () => Promise<boolean>
+  isAdmin: boolean
+  checkAdminStatus: () => Promise<boolean>
 }
 
+// FirebaseContext-д isAdmin шинж чанарыг нэмэх
 const FirebaseContext = createContext<FirebaseContextType>({
   user: null,
   loading: true,
@@ -45,16 +51,53 @@ const FirebaseContext = createContext<FirebaseContextType>({
   isInitialized: false,
   connectionStatus: "connecting",
   retryConnection: async () => false,
+  isAdmin: false,
+  checkAdminStatus: async () => false,
 })
 
 export const useFirebase = () => useContext(FirebaseContext)
 
+// FirebaseProvider компонентэд isAdmin state болон checkAdminStatus функцийг нэмэх
 export function FirebaseProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const [isInitialized, setIsInitialized] = useState(false)
   const [connectionStatus, setConnectionStatus] = useState<"connected" | "disconnected" | "connecting">("connecting")
   const [connectionAttempts, setConnectionAttempts] = useState(0)
+  const [isAdmin, setIsAdmin] = useState(false)
+
+  // Хэрэглэгчийн админ эрхийг шалгах функц
+  const checkAdminStatus = async (): Promise<boolean> => {
+    if (!user || !db) return false
+
+    try {
+      const userRef = ref(db, `users/${user.uid}`)
+      const snapshot = await get(userRef)
+
+      if (snapshot.exists()) {
+        const userData = snapshot.val()
+        const isUserAdmin = !!userData.isAdmin
+        setIsAdmin(isUserAdmin)
+        return isUserAdmin
+      }
+
+      setIsAdmin(false)
+      return false
+    } catch (error) {
+      console.error("Error checking admin status:", error)
+      setIsAdmin(false)
+      return false
+    }
+  }
+
+  // Хэрэглэгч өөрчлөгдөх үед админ эрхийг шалгах
+  useEffect(() => {
+    if (user && db && isInitialized) {
+      checkAdminStatus()
+    } else {
+      setIsAdmin(false)
+    }
+  }, [user, db, isInitialized])
 
   // Function to check database connection using a safer approach
   const checkDatabaseConnection = async (): Promise<boolean> => {
@@ -215,6 +258,37 @@ export function FirebaseProvider({ children }: { children: React.ReactNode }) {
     initializeFirebase()
   }, [connectionAttempts])
 
+  // Add a useEffect to check if the user is authenticated from localStorage on initial load
+  useEffect(() => {
+    const checkLocalAuth = async () => {
+      // If we already have a user, no need to check localStorage
+      if (user) return
+
+      // Check if we have auth data in localStorage (for development mode)
+      const devModeAdminAccess = localStorage.getItem("devModeAdminAccess")
+      const adminEmail = localStorage.getItem("adminEmail")
+
+      if (devModeAdminAccess === "true" && adminEmail && process.env.NODE_ENV === "development") {
+        console.log("Dev mode admin access detected from localStorage")
+        // Create a mock user for development
+        const mockUser = {
+          uid: "dev-admin-uid",
+          email: adminEmail,
+          displayName: "Dev Admin",
+          photoURL: null,
+          isAdmin: true,
+        }
+
+        // Set the mock user in the state
+        setIsAdmin(true)
+        // We don't set the user state directly as it expects a Firebase User object
+        // Instead, we'll handle this in the UI components
+      }
+    }
+
+    checkLocalAuth()
+  }, [user])
+
   const signIn = async (email: string, password: string) => {
     if (!auth) throw new Error("Firebase auth is not initialized")
     return signInWithEmailAndPassword(auth, email, password)
@@ -288,6 +362,8 @@ export function FirebaseProvider({ children }: { children: React.ReactNode }) {
         isInitialized,
         connectionStatus,
         retryConnection,
+        isAdmin,
+        checkAdminStatus,
       }}
     >
       {children}
