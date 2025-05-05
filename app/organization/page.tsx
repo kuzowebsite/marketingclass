@@ -49,6 +49,18 @@ export default function OrganizationPage() {
   const { addToCart } = useCart()
   const { toast } = useToast()
 
+  // Add a check at the beginning of the component to ensure authentication is properly handled
+  // Add this near the top of the component:
+
+  useEffect(() => {
+    // Check if we're in development mode with dev admin access
+    const devModeAdminAccess = localStorage.getItem("devModeAdminAccess")
+    if (process.env.NODE_ENV === "development" && devModeAdminAccess === "true") {
+      console.log("Dev mode admin access detected in organization page")
+      // No need to redirect, just log for debugging
+    }
+  }, [])
+
   // Хичээлүүдийг татах
   useEffect(() => {
     const fetchCourses = async () => {
