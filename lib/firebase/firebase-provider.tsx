@@ -234,11 +234,20 @@ export function FirebaseProvider({ children }: { children: React.ReactNode }) {
         setConnectionStatus("connected")
         console.log("Firebase initialized successfully")
 
+        // Set up auth state listener with better error handling
         const unsubscribe = onAuthStateChanged(
           auth,
           (currentUser) => {
             console.log("Auth state changed:", currentUser ? "User logged in" : "No user")
             setUser(currentUser)
+
+            // Set a cookie to help with server-side authentication checks
+            if (currentUser) {
+              document.cookie = `authToken=true; path=/; max-age=86400; SameSite=Strict`
+            } else {
+              document.cookie = `authToken=; path=/; max-age=0; SameSite=Strict`
+            }
+
             setLoading(false)
           },
           (error) => {
@@ -296,6 +305,11 @@ export function FirebaseProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = async () => {
     if (!auth) throw new Error("Firebase auth is not initialized")
+
+    // Clear auth cookies when signing out
+    document.cookie = `authToken=; path=/; max-age=0; SameSite=Strict`
+    document.cookie = `isAdmin=; path=/; max-age=0; SameSite=Strict`
+
     return firebaseSignOut(auth)
   }
 
